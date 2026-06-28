@@ -1,26 +1,17 @@
 """
-High School Management System API
+Shared test fixtures and configuration for FastAPI tests.
 
-A super simple FastAPI application that allows students to view and sign up
-for extracurricular activities at Mergington High School.
+This module provides fixtures for test setup, including TestClient initialization
+and sample test data (valid and invalid activity names, emails).
 """
 
-from fastapi import FastAPI, HTTPException
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse
-import os
-from pathlib import Path
+import pytest
+from fastapi.testclient import TestClient
+from src import app as app_module
 
-app = FastAPI(title="Mergington High School API",
-              description="API for viewing and signing up for extracurricular activities")
 
-# Mount the static files directory
-current_dir = Path(__file__).parent
-app.mount("/static", StaticFiles(directory=os.path.join(Path(__file__).parent,
-          "static")), name="static")
-
-# In-memory activity database
-activities = {
+# Initial activities state for resetting between tests
+INITIAL_ACTIVITIES = {
     "Chess Club": {
         "description": "Learn strategies and compete in chess tournaments",
         "schedule": "Fridays, 3:30 PM - 5:00 PM",
@@ -78,49 +69,69 @@ activities = {
 }
 
 
-@app.get("/")
-def root():
-    return RedirectResponse(url="/static/index.html")
+@pytest.fixture
+def client():
+    """
+    Fixture that provides a TestClient for the FastAPI app.
+    
+    Reset the in-memory activities database before each test to ensure proper
+    test isolation and prevent state leakage between tests.
+    """
+    # Clear existing activities and repopulate (instead of replacing the dict reference)
+    app_module.activities.clear()
+    
+    for key, value in INITIAL_ACTIVITIES.items():
+        app_module.activities[key] = {
+            "description": value["description"],
+            "schedule": value["schedule"],
+            "max_participants": value["max_participants"],
+            "participants": value["participants"].copy()  # Copy the list
+        }
+    
+    return TestClient(app_module.app)
 
 
-@app.get("/activities")
-def get_activities():
-    return activities
+@pytest.fixture
+def valid_activity_name():
+    """Fixture providing a valid activity name that exists in the app."""
+    return "Chess Club"
 
 
-@app.post("/activities/{activity_name}/signup")
-def signup_for_activity(activity_name: str, email: str):
-    """Sign up a student for an activity"""
-    # Validate activity exists
-    if activity_name not in activities:
-        raise HTTPException(status_code=404, detail="Activity not found")
-
-    # Get the specific activity
-    activity = activities[activity_name]
-
-    # Validate student is not already signed up
-    if email in activity["participants"]:
-        raise HTTPException(status_code=400, detail="Student already signed up for this activity")
-
-    # Add student
-    activity["participants"].append(email)
-    return {"message": f"Signed up {email} for {activity_name}"}
+@pytest.fixture
+def valid_email():
+    """Fixture providing a valid email for test signup operations."""
+    return "testuser@mergington.edu"
 
 
-@app.delete("/activities/{activity_name}/participants/{email}")
-def remove_participant(activity_name: str, email: str):
-    """Remove a student from an activity"""
-    # Validate activity exists
-    if activity_name not in activities:
-        raise HTTPException(status_code=404, detail="Activity not found")
+@pytest.fixture
+def another_valid_email():
+    """Fixture providing another valid email for multiple signup tests."""
+    return "anotheruser@mergington.edu"
 
-    # Get the specific activity
-    activity = activities[activity_name]
 
-    # Validate student is signed up
-    if email not in activity["participants"]:
-        raise HTTPException(status_code=404, detail="Student is not signed up for this activity")
+@pytest.fixture
+def activity_names():
+    """Fixture providing all valid activity names in the system."""
+    return [
+        "Chess Club",
+        "Programming Class",
+        "Gym Class",
+        "Basketball Team",
+        "Tennis Club",
+        "Art Studio",
+        "Drama Club",
+        "Debate Team",
+        "Science Club"
+    ]
 
-    # Remove student
-    activity["participants"].remove(email)
-    return {"message": f"Removed {email} from {activity_name}"}
+
+@pytest.fixture
+def invalid_activity_name():
+    """Fixture providing an activity name that does not exist."""
+    return "Nonexistent Activity"
+
+
+@pytest.fixture
+def invalid_email():
+    """Fixture providing an invalid email format."""
+    return "not-an-email"
